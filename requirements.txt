@@ -1,0 +1,163 @@
+﻿# ==============================================================================#
+#  Requirements File for Adaptive Macro-Financial Risk Calibration
+#  Author: CS Chirinda
+#  Version: 1.0.0
+#  Python Version: >=3.9,<3.13
+#
+#  This requirements file specifies all third-party dependencies for the
+#  implementation of the DCC-X econometric framework with GJR-GARCH volatility
+#  filtering, structural break testing, and Global Minimum Variance optimization.
+#
+#  Installation Instructions:
+#  1. Create a virtual environment: python -m venv venv
+#  2. Activate the environment:
+#     - Linux/macOS: source venv/bin/activate
+#     - Windows: venv\Scripts\activate
+#  3. Install dependencies: pip install -r requirements.txt
+#
+#  Version Pinning Strategy:
+#  - Major.Minor pinning for numerical stability (numpy, scipy)
+#  - Compatible release for flexibility where safe (pandas, matplotlib)
+#  - Exact pinning for JIT compilation (numba) to ensure reproducibility
+#
+#  Tested Platform Configurations:
+#  - Ubuntu 20.04/22.04 LTS (Linux x86_64)
+#  - macOS 12+ (Intel & Apple Silicon)
+#  - Windows 10/11 (x86_64)
+# ==============================================================================#
+
+# ------------------------------------------------------------------------------
+# Core Numerical Computing Stack
+# ------------------------------------------------------------------------------
+
+# NumPy: Fundamental array computing and linear algebra operations
+# - Required for matrix operations in covariance estimation
+# - Minimum version 1.21.0 for improved type annotations
+# - Maximum version <2.0.0 to avoid breaking API changes
+numpy>=1.21.0,<2.0.0
+
+# SciPy: Scientific computing and statistical functions
+# - scipy.optimize.minimize: SLSQP optimizer for constrained MLE
+# - scipy.linalg: Cholesky decomposition and matrix inversion
+# - scipy.stats: Probability distributions and statistical tests
+# - Minimum version 1.9.0 for robust optimization algorithms
+scipy>=1.9.0,<2.0.0
+
+# Numba: JIT compilation for high-performance recursive operations
+# - Critical for GJR-GARCH filtering and DCC-X matrix evolution
+# - Exact pinning to ensure reproducible compilation behavior
+# - Version 0.58.0+ required for Python 3.11+ compatibility
+# - Version 0.59.0+ recommended for improved LLVM performance
+numba==0.59.1
+
+# ------------------------------------------------------------------------------
+# Data Manipulation and Analysis
+# ------------------------------------------------------------------------------
+
+# Pandas: Time-series data structures and alignment
+# - Required for multi-asset index synchronization
+# - DataFrame operations for log-return transformations
+# - DatetimeIndex handling for trading calendar alignment
+# - Minimum version 1.5.0 for improved datetime64 handling
+pandas>=1.5.0,<3.0.0
+
+# ------------------------------------------------------------------------------
+# Visualization and Reporting
+# ------------------------------------------------------------------------------
+
+# Matplotlib: Publication-quality plotting and figure generation
+# - Required for IRF visualization and diagnostic plots
+# - Minimum version 3.5.0 for modern API and performance
+matplotlib>=3.5.0,<4.0.0
+
+# Seaborn: Statistical data visualization
+# - Enhanced plotting aesthetics for correlation heatmaps
+# - Distribution plots for residual diagnostics
+# - Minimum version 0.12.0 for compatibility with matplotlib 3.5+
+seaborn>=0.12.0,<1.0.0
+
+# ------------------------------------------------------------------------------
+# Optional: Enhanced Functionality (Uncomment if needed)
+# ------------------------------------------------------------------------------
+
+# Statsmodels: Additional econometric tests and diagnostics
+# - Ljung-Box autocorrelation testing
+# - AIC/BIC information criteria
+# - White heteroskedasticity test
+# statsmodels>=0.14.0,<1.0.0
+
+# Arch: Specialized GARCH family model library
+# - Alternative implementation for benchmarking
+# - Model Confidence Set (MCS) procedures
+# arch>=6.2.0,<7.0.0
+
+# PyPortfolioOpt: Portfolio optimization utilities
+# - Alternative GMV solver for validation
+# - Efficient frontier construction
+# PyPortfolioOpt>=1.5.0,<2.0.0
+
+# Joblib: Parallel computing for Monte Carlo simulations
+# - Accelerate bootstrap procedures
+# - Parallel IRF scenario generation
+# joblib>=1.3.0,<2.0.0
+
+# Openpyxl: Excel file I/O for results export
+# - Export forecasted covariance matrices
+# - Save optimization results to spreadsheets
+# openpyxl>=3.1.0,<4.0.0
+
+# ------------------------------------------------------------------------------
+# Development and Testing Dependencies (Uncomment for development)
+# ------------------------------------------------------------------------------
+
+# pytest: Unit testing framework
+# pytest>=7.4.0,<8.0.0
+
+# pytest-cov: Code coverage reporting
+# pytest-cov>=4.1.0,<5.0.0
+
+# black: Code formatter
+# black>=23.0.0,<24.0.0
+
+# mypy: Static type checker
+# mypy>=1.5.0,<2.0.0
+
+# flake8: Linting and style checking
+# flake8>=6.1.0,<7.0.0
+
+# ------------------------------------------------------------------------------
+# Package Compatibility Notes
+# ------------------------------------------------------------------------------
+# 
+# NumPy and Numba:
+#   - Numba 0.59.1 is compatible with NumPy 1.21.0 - 1.26.x
+#   - NumPy 2.0+ requires Numba 0.60.0+ (not yet released as of 2024)
+#   - Upper bound on NumPy prevents breaking changes
+#
+# SciPy and NumPy:
+#   - SciPy 1.9.0+ requires NumPy 1.21.0+
+#   - Binary compatibility ensured by numpy version constraint
+#
+# Pandas and NumPy:
+#   - Pandas 1.5.0+ works with NumPy 1.21.0 - 1.26.x
+#   - Pandas 2.x introduced breaking changes but maintains compatibility
+#
+# Matplotlib and NumPy:
+#   - Matplotlib 3.5.0+ requires NumPy 1.17+
+#   - Compatible across the specified NumPy range
+#
+# Platform-Specific Notes:
+#   - Apple Silicon (M1/M2): Ensure you install via pip in ARM64 environment
+#   - Windows: Numba requires Visual C++ Build Tools for LLVM compilation
+#   - Linux: Standard pip installation works for all distributions
+#
+# Performance Optimization:
+#   - Use MKL-accelerated NumPy: pip install numpy[mkl] (Intel CPUs)
+#   - Use OpenBLAS NumPy: pip install numpy (default, cross-platform)
+#   - Ensure LLVM is properly configured for Numba JIT compilation
+#
+# Known Issues:
+#   - Numba compilation cache may fail on network drives (use local storage)
+#   - SciPy optimize.minimize may emit convergence warnings (expected for GARCH)
+#   - Pandas SettingWithCopyWarning: Use .loc[] for all assignments
+# ==============================================================================#
