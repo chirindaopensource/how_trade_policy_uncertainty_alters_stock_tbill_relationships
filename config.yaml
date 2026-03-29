@@ -1,0 +1,318 @@
+﻿# =================================================================================
+# STUDY CONFIGURATION: SHIFTING CORRELATIONS AND TRADE POLICY UNCERTAINTY (REVISED)
+# =================================================================================
+
+# --------------------------------------------------------------------------
+# SYSTEM-WIDE RESEARCH METADATA
+# --------------------------------------------------------------------------
+METADATA:
+  title: "Shifting Correlations: How Trade Policy Uncertainty Alters stock-T bill Relationships"
+  author: "Demetrio Lacava"
+  sample_start: "2015-01-02"
+  sample_end: "2025-04-30"
+  frequency: "Daily (observed trading/publication days; not synthetic 'B')"  # manuscript implies; alignment details unspecified
+  estimation_framework: "GJR-DCC-X (Two-Step MLE)"
+  assets_count_N: 5
+
+# --------------------------------------------------------------------------
+# DATA SOURCE IDENTITY (lock tickers/fields to eliminate ambiguity)
+# --------------------------------------------------------------------------
+DATA_SOURCES:
+  equities:
+    provider: "Yahoo Finance"  # as stated in manuscript
+    field: "Close"  # unspecified in manuscript
+    tickers:  # unspecified in manuscript; must be set to what you actually downloaded
+      SP500: "^GSPC"         # placeholder; unspecified in manuscript
+      DJIA: "^DJI"           # placeholder; unspecified in manuscript
+      NASDAQ: "^IXIC"        # placeholder; unspecified in manuscript
+      RUSSELL_2000: "^RUT"   # placeholder; unspecified in manuscript
+    corporate_actions_handling: "None (index levels assumed)  # unspecified in manuscript"
+  rates:
+    provider: "Yahoo Finance"  # as stated in manuscript
+    series:
+      T_BILL_3M: "3M_TBILL_YIELD_SERIES_ID  # unspecified in manuscript"
+      T_BOND_10Y: "10Y_TREASURY_YIELD_SERIES_ID  # unspecified in manuscript (robustness)"
+    units: "percent_points  # unspecified in manuscript; must match raw vendor units"
+  exogenous:
+    TPU: "Caldara et al. (2020) website series (daily)"  # stated in manuscript
+    VIX: "CBOE VIX level (daily)  # provider unspecified in manuscript"
+    EPU: "Baker et al. (2016) EPU level (daily)  # provider unspecified in manuscript"
+  time_zone_policy: "Normalize all timestamps to date-only (no intraday time)  # unspecified in manuscript"
+
+# --------------------------------------------------------------------------
+# RAW UNPROCESSED INPUT DATA STRUCTURE SCHEMAS (before stationarity transforms)
+# --------------------------------------------------------------------------
+RAW_DATA_SCHEMAS:
+  ASSETS_DF:
+    index: "DatetimeIndex (observed dates; post-acquisition)"
+    columns:
+      SP500_Price: "float64"
+      DJIA_Price: "float64"
+      NASDAQ_Price: "float64"
+      RUSSELL_Price: "float64"
+      T_Bill_Yield: "float64"
+      T_Bond_10Y_Yield: "float64  # optional, for robustness (Table 5 panel a)"
+  EXOGENOUS_DF:
+    index: "DatetimeIndex (observed dates; post-acquisition)"
+    columns:
+      TPU_Index: "float64"
+      VIX_Index: "float64"
+      EPU_Index: "float64"
+  METADATA_DF:
+    index: "DatetimeIndex (aligned sample index)"
+    columns:
+      Pres_Dummy: "int64"
+      D_Mar2018: "int64  # step dummy; required for structural break"
+      D_May2019: "int64  # step dummy; required for structural break"
+      D_Apr2025: "int64  # step dummy; stored but not used in break tests per manuscript"
+
+# --------------------------------------------------------------------------
+# ALIGNMENT AND MISSING-DATA POLICY (critical; manuscript does not specify)
+# --------------------------------------------------------------------------
+ALIGNMENT_POLICY:
+  date_index_definition: "intersection_of_all_required_series_dates  # unspecified in manuscript"
+  missing_data_handling:
+    method: "drop_any_date_with_missing_required_inputs  # unspecified in manuscript"
+    forward_fill_allowed: false  # unspecified in manuscript
+    back_fill_allowed: false     # unspecified in manuscript
+
+# --------------------------------------------------------------------------
+# PRE-PROCESSING: stationarity transformations + scaling conventions
+# --------------------------------------------------------------------------
+PRE_PROCESSING:
+  EQUITY_TRANSFORMATION: "Log-Returns: r_t = scale * (ln(P_t) - ln(P_{t-1}))"
+  EQUITY_RETURN_SCALE: 100.0  # unspecified in manuscript (common convention)
+  TREASURY_TRANSFORMATION: "First difference of yield level"
+  TREASURY_DIFF_SCALE_TO_BPS: 100.0  # unspecified in manuscript; 100*(pct-point diff)=bps
+  TPU_TRANSFORM: "level  # unspecified in manuscript (could be rescaled)"
+  VIX_TRANSFORM: "level  # unspecified in manuscript"
+  EPU_TRANSFORM: "level  # unspecified in manuscript"
+  REGRESSOR_CENTERING:
+    use_bar_x_in_intercept: true  # required by Eq. (dccx)
+    bar_x_definition: "sample_mean_over_estimation_sample  # implied; unspecified in manuscript"
+  LAGGING_LOGIC:
+    dccx_regressor_lag: 1  # x_{t-1} in Eq. (dccx)
+    note: "Apply lag=1 to TPU, Dummy, Interaction, VIX, EPU when used in Q_t recursion"
+  INTERACTION_TERM: "TPU_Index * Pres_Dummy  # implied by manuscript"
+
+# --------------------------------------------------------------------------
+# STEP 1: UNIVARIATE VOLATILITY MODEL (GJR-GARCH)
+# --------------------------------------------------------------------------
+UNIVARIATE_MODEL:
+  specification: "GJR-GARCH(1,1)"
+  equation: "h^2_{i,t} = ω_i + α_i r^2_{i,t-1} + β_i h^2_{i,t-1} + γ_i r^2_{i,t-1} I_{i,t-1}"
+  indicator_definition: "I_{i,t-1} = 1{ r_{i,t-1} < 0 }"
+  mean_model: "zero_mean (r_t|F_{t-1} ~ N(0, H_t))  # implied by manuscript; estimation of mean unspecified"
+  distribution: "Gaussian"  # as assumed in manuscript (Student-t mentioned as alternative)
+  constraints:
+    positivity: "ω > 0, α ≥ 0, β ≥ 0, γ ≥ 0"
+    stationarity: "α + β + γ/2 < 1"
+    omega_lower_bound: 1.0e-12  # unspecified in manuscript; numerical safeguard
+  initialization:
+    h2_0_method: "sample_variance_of_first_K_obs  # unspecified in manuscript"
+    K: 50  # unspecified in manuscript (placeholder)
+  optimization:
+    optimizer: "L-BFGS-B with constraints  # unspecified in manuscript"
+    max_iter: 5000  # unspecified in manuscript
+    tol: 1.0e-8       # unspecified in manuscript
+    use_analytic_gradients: false  # unspecified in manuscript
+
+# --------------------------------------------------------------------------
+# STEP 2: MULTIVARIATE CORRELATION MODEL (DCC / DCC-X)
+# --------------------------------------------------------------------------
+MULTIVARIATE_MODEL:
+  two_step_mle: true  # Engle (2002) procedure
+  normalization: "R_t = Qtilde_t^{-1} Q_t Qtilde_t^{-1}, Qtilde_t = diag(sqrt(Q_ii,t))"  # unnumbered in manuscript
+  dcc_equation: "Q_t = (1-θ1-θ2) Rbar + θ1 Qtilde_{t-1} e_{t-1} e'_{t-1} Qtilde_{t-1} + θ2 Q_{t-1}"
+  dccx_equation: "Q_t = (1-θ1-θ2-θ3 xbar) Qbar + θ1 Qtilde_{t-1} e_{t-1} e'_{t-1} Qtilde_{t-1} + θ2 Q_{t-1} + θ3 x_{t-1}"
+  unconditional_targets:
+    Rbar_definition: "sample_correlation_of_deGARCHed_returns  # implied"
+    Qbar_definition: "set_equal_to_Rbar  # unspecified in manuscript (placeholder)"
+  constraints:
+    theta_1_lower: 0.0
+    theta_2_lower: 0.0
+    theta_1_plus_theta_2_lt_1: true  # implied by DCC stability; not printed explicitly
+    theta_3_lower: 0.0  # manuscript expects θ3 > 0; constraint not explicitly imposed
+    intercept_weight_positive: "1-θ1-θ2-θ3*xbar > 0  # implied; unspecified in manuscript"
+  initialization:
+    Q_0: "Qbar  # unspecified in manuscript (placeholder)"
+    R_0: "Rbar  # unspecified in manuscript (placeholder)"
+    burn_in_T0: 0  # unspecified in manuscript
+  likelihood:
+    distribution: "Gaussian correlation likelihood"
+    loglik_equation_ref: "Eq. (loglik)"
+    logdet_accumulation: "sum_over_t  # Eq. display ambiguous; unspecified in manuscript (placeholder)"
+  optimization:
+    optimizer: "BFGS or L-BFGS-B  # unspecified in manuscript"
+    max_iter: 20000  # unspecified in manuscript
+    tol: 1.0e-9        # unspecified in manuscript
+    penalty_for_non_PD: true  # unspecified in manuscript
+  numerical_stability:
+    pd_check: "attempt_cholesky_each_t  # unspecified in manuscript"
+    jitter_eps: 1.0e-10  # unspecified in manuscript
+    determinant_method: "logdet_via_cholesky  # unspecified in manuscript"
+  standard_errors:
+    type: "White (1980) robust"
+    sandwich_form: "OPG_or_numerical_score  # unspecified in manuscript"
+  diagnostics:
+    ljung_box_lags: [1]  # Panel C Table 2
+
+  # ----------------------------------------------------------------------
+  # MODEL SPECIFICATIONS TO ESTIMATE (Table 2 panel b)
+  # ----------------------------------------------------------------------
+  models_to_estimate:
+    DCC:
+      type: "DCC"
+      regressors: []
+    DCC_X_TPU:
+      type: "DCC-X"
+      regressors: ["TPU_Index"]
+    DCC_X_Dummy:
+      type: "DCC-X"
+      regressors: ["Pres_Dummy"]
+    DCC_X_TPUxDummy:
+      type: "DCC-X"
+      regressors: ["TPU_Index*Pres_Dummy"]
+    DCC_X_Full:
+      type: "DCC-X"
+      regressors: ["TPU_Index", "Pres_Dummy", "TPU_Index*Pres_Dummy"]
+
+# --------------------------------------------------------------------------
+# STRUCTURAL BREAK ANALYSIS (Eq. dccx_sb) AND ROLLING θ3
+# --------------------------------------------------------------------------
+STRUCTURAL_ANALYSIS:
+  intervention_dates:
+    Mar2018: "2018-03-21"
+    May2019: "2019-05-10"
+    Apr2025: "2025-04-02  # stored but not used for break test per manuscript"
+  break_dummy_type: "step_dummy (D_t = 1{t >= t*})  # required by Eq. dccx_sb"
+  structural_break_equation_ref: "Eq. (dccx_sb)"
+  rolling_window:
+    enabled: true
+    window_size: 750  # stated in manuscript
+    step_size: 1      # stated in manuscript
+    target_parameter: "theta_3"
+
+# --------------------------------------------------------------------------
+# IRF SIMULATION SETTINGS (manuscript narrative; algorithmic details unspecified)
+# --------------------------------------------------------------------------
+IRF_SETTINGS:
+  shock_variable: "TPU_Index"
+  shock_size: "one_standard_deviation"
+  horizon_days: 120  # unspecified in manuscript (placeholder; must exceed ~60 absorption)
+  baseline_state: "average_level_of_correlations  # described; operationalization unspecified"
+  treatment_of_news_term: "set_to_unconditional_expectation_or_hold_fixed  # unspecified in manuscript"
+  vix_benchmark_enabled: true
+
+# --------------------------------------------------------------------------
+# OUT-OF-SAMPLE FORECAST EVALUATION (Table 3)
+# --------------------------------------------------------------------------
+OUT_OF_SAMPLE_EVAL:
+  split_config:
+    in_sample_end: "2022-12-30"
+    out_of_sample_start: "2023-01-03"
+    out_of_sample_end: "2025-04-30"
+    total_forecasts: 583  # stated in manuscript
+  refit_protocol:
+    type: "fixed_parameters_from_in_sample_fit  # unspecified in manuscript (placeholder)"
+    rolling_window_size: null  # unspecified in manuscript
+    expanding_window: false    # unspecified in manuscript
+  loss_functions:
+    statistical: ["Frobenius (F)", "QLike"]
+    economic: ["GMV", "RPV"]
+  gmv:
+    j_vector_definition: "vector_of_ones"
+    weight_normalization: "as in manuscript (sqrt(n)*...)"
+    regularize_H_inv: true   # unspecified in manuscript (recommended)
+    ridge_lambda: 1.0e-10      # unspecified in manuscript
+
+# --------------------------------------------------------------------------
+# MODEL CONFIDENCE SET (MCS) SETTINGS (Table 3; bootstrap details unspecified)
+# --------------------------------------------------------------------------
+MCS_SETTINGS:
+  procedure: "Hansen-Lunde-Nason (2011) MCS"
+  test_statistic: "Range statistic (T_R)"
+  alpha: 0.05  # stated in manuscript
+  bootstrap:
+    type: "stationary_or_block_bootstrap  # unspecified in manuscript"
+    replications_B: 5000  # unspecified in manuscript (placeholder)
+    block_length: 10      # unspecified in manuscript (placeholder)
+    random_seed: 12345    # unspecified in manuscript (placeholder; required for determinism)
+
+# --------------------------------------------------------------------------
+# VISUALIZATION SETTINGS (for reproducing figures)
+# --------------------------------------------------------------------------
+VISUALIZATION_PARAMS:
+  heatmap:
+    input: "de-GARCHed residual correlations (Eq. stand_res)"
+    colormap: "unspecified in manuscript"
+  rolling_corr:
+    window: 60  # stated in manuscript
+    threshold: "1 standard deviation above mean  # described; exact rule unspecified"
+  event_lines:
+    dates: ["2018-03-21", "2019-05-10", "2025-04-02"]
+    style: "vertical blue dashed  # described"
+
+# --------------------------------------------------------------------------
+# VALIDATION TARGETS (NOT INPUTS): published estimates for unit tests
+# --------------------------------------------------------------------------
+VALIDATION_TARGETS:
+  TABLE_2_PANEL_A_GJR_ESTIMATES:
+    note: "Published coefficient estimates; do not use as inputs to estimation."
+    SP500:
+      omega: 0.0408
+      alpha: 0.0502
+      beta: 0.8029
+      gamma: 0.2412
+    DOW_JONES:
+      omega: 0.0400
+      alpha: 0.0484
+      beta: 0.8032
+      gamma: 0.2326
+    NASDAQ:
+      omega: 0.0473
+      alpha: 0.0206
+      beta: 0.8671
+      gamma: 0.1699
+    RUSSELL_2000:
+      omega: 0.0451
+      alpha: 0.0410
+      beta: 0.8794
+      gamma: 0.1145
+    T_BILL_3M:
+      omega: 0.0000
+      alpha: 0.1617
+      beta: 0.8520
+      gamma: 0.0535  # omega rounded in paper
+  TABLE_2_PANEL_B_DCCX_ESTIMATES:
+    note: "Published correlation-stage estimates; do not use as inputs."
+    DCC:
+      theta_1: 0.0486
+      theta_2: 0.9294
+    DCC_X_TPU:
+      theta_1: 0.0464
+      theta_2: 0.9292
+      theta_3: 0.0250
+    DCC_X_Dummy:
+      theta_1: 0.0479
+      theta_2: 0.9282
+      theta_3: 0.0040
+    DCC_X_TPUxDummy:
+      theta_1: 0.0466
+      theta_2: 0.9289
+      theta_3: 0.0347
+    DCC_X_Full:
+      theta_1: 0.0454
+      theta_2: 0.9297
+      theta_3: 0.0042
+      theta_4: -0.0026
+      theta_5: 0.0421
+  STRUCTURAL_BREAK_DELTAS_TABLE_4:
+    note: "Published deltas; do not use as inputs."
+    Mar2018:
+      delta: -0.0680
+    May2019:
+      delta: -0.0403
+  OOS_COUNTS_TABLE_3:
+    note: "Forecast count used for validation of split logic."
+    total_forecasts: 583
